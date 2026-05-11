@@ -590,7 +590,7 @@ function calHtml(user, records, ownPid, monthStr, y, m) {
   h.push(`<col style="width:${W.tot}mm"><col style="width:${W.cnt}mm"></colgroup><thead>`);
 
   h.push('<tr>');
-  for (const [label, rs] of [['提供時間帯',2],['サービス内容',2],['事業所名',2],['自<br>計',2],['実<br>績',2]])
+  for (const [label, rs] of [['提供時間帯',2],['サービス内容',2],['事業所名',2],['自<br>計',2],['予<br>実',2]])
     h.push(`<th class="th-bg" rowspan="${rs}">${label}</th>`);
   for (let d = 1; d <= dim; d++) {
     const wd = dwd[d], cls = wd===5?' sat':(wd===6?' sun':'');
@@ -610,6 +610,7 @@ function calHtml(user, records, ownPid, monthStr, y, m) {
       tstr = ftime(st) + (et && et !== '9999' ? `〜${ftime(et)}` : '');
     } else { tstr = '時間外等'; }
 
+    const tspan = keys.length * 2;
     let first = true;
     for (const k of keys) {
       const [,,pid,sc] = kparts(k);
@@ -618,18 +619,29 @@ function calHtml(user, records, ownPid, monthStr, y, m) {
       const pn   = pnames[pid] || pid;
       const sn   = SC[sc] || sc;
 
+      // 予定行
       h.push('<tr>');
-      h.push(`<td class="td-t">${first ? tstr : ''}</td>`);
-      h.push(`<td class="td-s">${sn}</td>`);
-      h.push(`<td class="td-p">${pn}</td>`);
-      h.push(`<td class="c">${pid === ownPid ? '●' : ''}</td>`);
+      if (first) h.push(`<td class="td-t" rowspan="${tspan}">${tstr}</td>`);
+      h.push(`<td class="td-s" rowspan="2">${sn}</td>`);
+      h.push(`<td class="td-p" rowspan="2">${pn}</td>`);
+      h.push(`<td class="c" rowspan="2">${pid === ownPid ? '●' : ''}</td>`);
+      h.push('<td class="c">予</td>');
+      for (let d = 1; d <= dim; d++) {
+        const wd = dwd[d], bg = wd===6?' sunbg':(wd===5?' satbg':'');
+        h.push(`<td class="${bg}">${days.has(d) ? '1' : ''}</td>`);
+      }
+      h.push(`<td class="td-r" rowspan="2">${tot ? fn(tot) : ''}</td>`);
+      h.push(`<td class="c" rowspan="2">${days.size}</td></tr>`);
+
+      // 実績行
+      h.push('<tr>');
       h.push('<td class="c">実</td>');
       for (let d = 1; d <= dim; d++) {
         const wd = dwd[d], bg = wd===6?' sunbg':(wd===5?' satbg':'');
-        h.push(`<td class="${bg}">${days.has(d) ? '●' : ''}</td>`);
+        h.push(`<td class="${bg}"></td>`);
       }
-      h.push(`<td class="td-r">${tot ? fn(tot) : ''}</td>`);
-      h.push(`<td class="c">${days.size}</td></tr>`);
+      h.push('</tr>');
+
       first = false;
     }
   }
@@ -665,13 +677,13 @@ function bpHtml(user, details, summaries, totals, ownPid, monthStr, y, m, create
   }
 
   const COLS = [
-    ['事業所名',22],['事業所番号',16],['サービス内容/種類',26],['サービスコード',14],
-    ['単位数<br>(%)',8],['合計数/<br>金額',8],['回数',8],
+    ['事業所名',30],['事業所番号',16],['サービス内容/種類',32],['サービスコード',12],
+    ['単位数<br>(%)',8],['合計数/<br>金額',8],['回数',7],
     ['合計<br>単位数',13],['給付管理<br>単位数',13],
     ['種類支給<br>限度基準<br>単位数',12],['種類限度<br>超過内<br>単位数',10],
     ['区分支給<br>限度基準<br>単位数',12],['区分限度<br>超過内<br>単位数',10],
-    ['単位数<br>単価',12],['費用総額<br>(保険対象)',14],['給付率<br>(%)',8],
-    ['保険費<br>請求額',14],['定額<br>利用者負担',11],['利用者<br>負担額',14],
+    ['単位数<br>単価',12],['費用総額<br>(保険対象)',16],['給付率<br>(%)',8],
+    ['保険費<br>請求額',16],['定額<br>利用者負担',11],['利用者<br>負担額',19],
   ];
 
   const h = [];
