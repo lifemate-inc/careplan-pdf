@@ -270,19 +270,20 @@ table.ft col.ft-usr { width: 55mm; }
 
 // ═══════════════════════════════════════════════════════════
 // サービスコードマスター
-// 出典: 厚生労働省 介護給付費単位数等サービスコード表（令和8年6月1日施行版）
+// 出典: 厚生労働省 介護給付費単位数等サービスコード表
+// 令和8年6月1日施行前（〜202605）は旧コード名（Ⅰ２/Ⅰ３方式）を使用
 // ═══════════════════════════════════════════════════════════
 const SC = {
   // 訪問看護（指定訪問看護ステーション）
-  '131111': '訪問看護（Ⅰ）イ（30分未満）',
-  '131211': '訪問看護（Ⅰ）ロ（30分以上1時間未満）',
-  '131311': '訪問看護（Ⅰ）ハ（1時間以上1時間30分未満）',
-  '131411': '訪問看護（Ⅰ）ニ（1時間30分以上）',
-  '131501': '訪問看護（Ⅰ）ホ（理学療法士等・20分）',
-  '133100': '緊急時訪問看護加算（Ⅱ）',
-  '133200': '緊急時訪問看護加算（Ⅱ）（医療機関）',
-  '134000': '特別管理加算（Ⅰ）',
-  '134001': '特別管理加算（Ⅱ）',
+  '131111': '訪看Ⅰ２',
+  '131211': '訪看Ⅰ３',
+  '131311': '訪看Ⅰ４',
+  '131411': '訪看Ⅰ５',
+  '131501': '訪看Ⅰ６',
+  '133100': '緊急時訪問看護加算Ⅱ１',
+  '133200': '緊急時訪問看護加算Ⅱ２',
+  '134000': '訪問看護特別管理加算Ⅰ',
+  '134001': '訪問看護特別管理加算Ⅱ',
   // 訪問介護
   '111111': '訪問介護（身体介護）20分以上30分未満',
   '111211': '訪問介護（身体介護）30分以上1時間未満',
@@ -354,6 +355,37 @@ function fd8(d) {
 
 function rwa(y) { return y - 2018; }
 
+const INSURER_NAMES = { '122275': '浦安市' };
+
+function toWareki(d, showDay) {
+  if (!d) return '';
+  const s = String(d).replace(/[^0-9]/g, '');
+  if (s.length < 6) return d;
+  const y = parseInt(s.slice(0,4)), m = parseInt(s.slice(4,6));
+  const dy = s.length >= 8 ? parseInt(s.slice(6,8)) : 0;
+  let era, ey;
+  if (y > 2019 || (y === 2019 && m >= 5)) { era = '令和'; ey = y - 2018; }
+  else if (y > 1989 || (y === 1989 && (m > 1 || dy > 7))) { era = '平成'; ey = y - 1988; }
+  else if (y > 1926 || (y === 1926 && m === 12 && dy >= 25)) { era = '昭和'; ey = y - 1925; }
+  else if (y > 1912 || (y === 1912 && m >= 8)) { era = '大正'; ey = y - 1911; }
+  else { era = '明治'; ey = y - 1867; }
+  return (showDay && dy > 0) ? `${era}${ey}年${m}月${dy}日` : `${era}${ey}年${m}月`;
+}
+
+function birthEraHtml(d8) {
+  if (!d8 || d8.length < 8) return d8 || '';
+  const y = parseInt(d8.slice(0,4)), m = parseInt(d8.slice(4,6)), dy = parseInt(d8.slice(6,8));
+  let era, ey;
+  if (y > 2019 || (y === 2019 && m >= 5)) { era = '令'; ey = y - 2018; }
+  else if (y > 1989 || (y === 1989 && (m > 1 || dy > 7))) { era = '平'; ey = y - 1988; }
+  else if (y > 1926 || (y === 1926 && m === 12 && dy >= 25)) { era = '昭'; ey = y - 1925; }
+  else if (y > 1912 || (y === 1912 && m >= 8)) { era = '大'; ey = y - 1911; }
+  else { era = '明'; ey = y - 1867; }
+  const eras = ['明', '大', '昭', '平', '令'];
+  const line = eras.map(e => e === era ? `<b><u>${e}</u></b>` : e).join('・');
+  return `${line}　${ey}年${m}月${dy}日`;
+}
+
 function getDaysInMonth(y, m) { return new Date(y, m, 0).getDate(); }
 
 // 0=月, 5=土, 6=日（Pythonの weekday() と同じ）
@@ -423,6 +455,7 @@ function readUphosoku(rows) {
     const lv = String(row[17]).trim();
     users[no] = {
       insured_no:      no,
+      insurer_no:      row[1] ? row[1].trim() : '',
       name_kana:       row[4].trim(),
       name:            row[5].trim(),
       gender:          row[6].trim() === '1' ? '男' : '女',
@@ -432,6 +465,9 @@ function readUphosoku(rows) {
       certified_end:   row[14].trim(),
       care_level:      CL[lv] || `要介護${lv}`,
       benefit_limit:   row.length > 18 ? row[18].trim() : '',
+      cm_agency_name:  row.length > 20 ? row[20].trim() : '',
+      cm_name:         row.length > 21 ? row[21].trim() : '',
+      cm_tel:          row.length > 22 ? row[22].trim() : '',
       target_month:    row[row.length - 1].trim(),
     };
   }
@@ -451,6 +487,7 @@ function readUpplan(rows) {
       start_time:    row.length > 11 ? row[11].trim() : '',
       end_time:      row.length > 12 ? row[12].trim() : '',
       service_code:  row.length > 14 ? row[14].trim() : '',
+      service_name:  row.length > 15 ? row[15].trim() : '',
       provider_id:   row.length > 19 ? row[19].trim() : '',
       provider_name: row.length > 20 ? row[20].trim() : '',
       is_own:        row.length > 21 ? row[21].trim() === '1' : false,
@@ -514,35 +551,58 @@ function readUpsikyu(rows) {
 // ═══════════════════════════════════════════════════════════
 // HTML生成
 // ═══════════════════════════════════════════════════════════
-function hdrHtml(user, ownPid) {
-  const cs = fd8(user.certified_start);
-  const ce = fd8(user.certified_end);
-  const bd = fd8(user.birth_date);
-  return `<div class="hdr">
+function hdrHtml(user, createdAt) {
+  const insurerName = INSURER_NAMES[user.insurer_no] || '';
+  const cs = toWareki(user.certified_start, false);
+  const ce = toWareki(user.certified_end, false);
+  const bd = birthEraHtml(user.birth_date);
+  const gm = user.gender === '男'
+    ? '<b><u>男</u></b>・女'
+    : '男・<b><u>女</u></b>';
+  const cmInfo = [user.cm_name, user.cm_tel ? `（${user.cm_tel}）` : ''].filter(Boolean).join('');
+  return `<div style="text-align:right;font-size:4.5pt;margin-bottom:0.2mm">サービス事業所→居宅介護支援事業所</div>
+<div class="hdr">
   <div class="hdr-row">
-    <div class="hc hl" style="width:22mm">被保険者番号</div>
-    <div class="hc" style="width:28mm;font-size:8pt;font-weight:bold">${user.insured_no||''}</div>
-    <div class="hc hl" style="width:10mm">氏名</div>
-    <div class="hc" style="width:38mm;font-size:8pt;font-weight:bold">${user.name||''}　${user.name_kana||''}</div>
-    <div class="hc hl" style="width:10mm">性別</div>
-    <div class="hc" style="width:7mm">${user.gender||''}</div>
-    <div class="hc hl" style="width:14mm">生年月日</div>
-    <div class="hc" style="width:22mm">${bd}</div>
-    <div class="hc hl" style="width:14mm">要介護度</div>
-    <div class="hc" style="width:16mm;font-weight:bold">${user.care_level||''}</div>
+    <div class="hc hl" style="width:11mm;white-space:normal;line-height:1.4">保険者<br>番号</div>
+    <div class="hc" style="width:20mm">${user.insurer_no||''}</div>
+    <div class="hc hl" style="width:10mm">保険者名</div>
+    <div class="hc" style="width:28mm">${insurerName}</div>
+    <div class="hc hl" style="width:18mm;white-space:normal;line-height:1.4">居宅介護支援<br>事業者事業所名</div>
+    <div class="hc" style="flex:1;min-width:0">${user.cm_agency_name||''}</div>
+    <div class="hc hl" style="width:12mm;white-space:normal;line-height:1.4">作成<br>年月日</div>
+    <div class="hc" style="width:28mm">${createdAt}</div>
   </div>
   <div class="hdr-row">
-    <div class="hc hl" style="width:22mm">認定期間</div>
-    <div class="hc" style="width:42mm">${cs}　〜　${ce}</div>
-    <div class="hc hl" style="width:30mm;white-space:normal;font-size:5.5pt">区分支給限度基準額</div>
-    <div class="hc" style="width:28mm;font-weight:bold">${fn(user.benefit_limit)}　単位</div>
-    <div class="hc hl" style="width:16mm">自事業所番号</div>
-    <div class="hc" style="width:22mm">${ownPid}</div>
+    <div class="hc hl" style="width:11mm;white-space:normal;line-height:1.4">被保険者<br>番号</div>
+    <div class="hc" style="width:20mm;font-weight:bold;letter-spacing:0.3mm">${user.insured_no||''}</div>
+    <div class="hc hl" style="width:10mm;white-space:normal;line-height:1.4">フリガナ<br>被保険者氏名</div>
+    <div class="hc" style="flex:1;min-width:0">
+      <div style="font-size:5pt">${user.name_kana||''}</div>
+      <div style="font-size:7.5pt;font-weight:bold">${user.name||''}　様</div>
+    </div>
+    <div class="hc hl" style="width:18mm;white-space:normal">担当者名(TEL)</div>
+    <div class="hc" style="width:50mm;white-space:normal">${cmInfo}</div>
+    <div class="hc hl" style="width:12mm;white-space:normal;line-height:1.4">届出<br>年月日</div>
+    <div class="hc" style="width:28mm"></div>
+  </div>
+  <div class="hdr-row">
+    <div class="hc hl" style="width:11mm">生年月日</div>
+    <div class="hc" style="width:36mm;white-space:normal;line-height:1.5">${bd}</div>
+    <div class="hc hl" style="width:8mm">性別</div>
+    <div class="hc" style="width:12mm">${gm}</div>
+    <div class="hc hl" style="width:14mm;white-space:normal;line-height:1.4">要介護<br>状態区分</div>
+    <div class="hc" style="width:16mm;font-weight:bold">${user.care_level||''}</div>
+    <div class="hc hl" style="width:14mm;white-space:normal;font-size:5.5pt;line-height:1.4">区分支給<br>限度基準額</div>
+    <div class="hc" style="width:22mm;font-weight:bold">${fn(user.benefit_limit)}　単位/月</div>
+    <div class="hc hl" style="width:12mm;white-space:normal;line-height:1.4">限度額<br>適用期間</div>
+    <div class="hc" style="width:30mm;white-space:normal;line-height:1.5">${cs}　から<br>${ce}　まで</div>
+    <div class="hc hl" style="width:16mm;white-space:normal;font-size:5pt;line-height:1.4">前月までの<br>短期入所<br>利用日数</div>
+    <div class="hc" style="width:13mm">0　日</div>
   </div>
 </div>`;
 }
 
-function calHtml(user, records, ownPid, monthStr, y, m) {
+function calHtml(user, records, ownPid, monthStr, y, m, createdAt, snames) {
   const no  = user.insured_no;
   const dim = getDaysInMonth(y, m);
   const dwd = {};
@@ -581,7 +641,7 @@ function calHtml(user, records, ownPid, monthStr, y, m) {
   const h = [];
   h.push('<div class="page">');
   h.push(`<div style="text-align:center;font-size:9pt;font-weight:bold;margin-bottom:1mm">サービス利用票（居宅（介護予防）サービス計画）　${monthStr}分</div>`);
-  h.push(hdrHtml(user, ownPid));
+  h.push(hdrHtml(user, createdAt));
   h.push('<table class="cal"><colgroup>');
   for (const key of ['time','svc','prv','jk','yj'])
     h.push(`<col style="width:${W[key]}mm">`);
@@ -617,7 +677,7 @@ function calHtml(user, records, ownPid, monthStr, y, m) {
       const days = sdays.get(k);
       const tot  = sunits.get(k);
       const pn   = pnames[pid] || pid;
-      const sn   = SC[sc] || sc;
+      const sn   = (snames && snames[sc]) || SC[sc] || sc;
 
       // 予定行
       h.push('<tr>');
@@ -649,7 +709,7 @@ function calHtml(user, records, ownPid, monthStr, y, m) {
   return h.join('');
 }
 
-function bpHtml(user, details, summaries, totals, ownPid, monthStr, y, m, createdAt) {
+function bpHtml(user, details, summaries, totals, ownPid, monthStr, y, m, createdAt, snames) {
   const no    = user.insured_no;
   const rows  = details[no]   || [];
   const sums  = summaries[no] || [];
@@ -725,7 +785,7 @@ function bpHtml(user, details, summaries, totals, ownPid, monthStr, y, m, create
       const rcls  = isOwn ? ' class="r-own"' : '';
 
       for (const r of rlist) {
-        const sn      = SC[r.service_code] || r.service_code;
+        const sn      = (snames && snames[r.service_code]) || SC[r.service_code] || r.service_code;
         const item    = r.item_name || r.item_code;
         const display = item ? `${sn}　${item}` : sn;
         h.push(`<tr${rcls}>`);
@@ -791,10 +851,18 @@ function buildHtml(users, records, details, summaries, totals, ownPid, targetMon
   const crw = rwa(now.getFullYear());
   const created = `令和${crw}年${String(now.getMonth()+1).padStart(2,'0')}月${String(now.getDate()).padStart(2,'0')}日`;
 
+  // UPPLANのサービス名（col 15）をコード→名前の辞書に変換（優先使用）
+  const snames = {};
+  for (const r of records) {
+    if (r.service_code && r.service_name && !snames[r.service_code]) {
+      snames[r.service_code] = r.service_name;
+    }
+  }
+
   const parts = [];
   for (const [, user] of Object.entries(users).sort((a, b) => a[0] < b[0] ? -1 : 1)) {
-    parts.push(calHtml(user, records, ownPid, ms, y, m));
-    parts.push(bpHtml(user, details, summaries, totals, ownPid, ms, y, m, created));
+    parts.push(calHtml(user, records, ownPid, ms, y, m, created, snames));
+    parts.push(bpHtml(user, details, summaries, totals, ownPid, ms, y, m, created, snames));
   }
   return parts.join('');
 }
