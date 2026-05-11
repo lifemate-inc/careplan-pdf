@@ -163,8 +163,11 @@ table.cal th, table.cal td {
 .th-bg  { background: #d8d8d8; font-weight: bold; }
 .th-sub { background: #ebebeb; font-size: 4.5pt; }
 .td-t   { background: #f0f0f0; font-weight: bold; }
-.td-s   { text-align: left; padding-left: 0.5mm; }
-.td-p   { text-align: left; padding-left: 0.5mm; font-size: 4.5pt; }
+.td-s   { padding-left: 0.5mm; }
+.td-p   { padding-left: 0.5mm; font-size: 4.5pt; }
+table.cal td.td-t,
+table.cal td.td-s,
+table.cal td.td-p { text-align: left; }
 .td-r   { text-align: right; padding-right: 0.3mm; }
 .c      { text-align: center; }
 .sat    { color: #00b; } .sun { color: #b00; }
@@ -243,7 +246,20 @@ table.ft col.ft-usr { width: 55mm; }
   </div>
 
   <div class="card">
-    <div class="card-title">Step 2 &nbsp;PDF生成</div>
+    <div class="card-title">Step 2 &nbsp;保存設定</div>
+    <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">PDFファイル名（プレフィックス）</label>
+    <input type="text" id="filenamePrefix" placeholder="例：サービス利用票_202605"
+      style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;transition:border .15s"
+      onfocus="this.style.borderColor='#2563eb'" onblur="this.style.borderColor='#d1d5db'"
+      oninput="localStorage.setItem('careplan_prefix',this.value)">
+    <div style="font-size:11px;color:#94a3b8;margin-top:5px;line-height:1.5">
+      「PDFとして保存」時にブラウザが提案するファイル名になります。<br>
+      空欄の場合はページタイトル（月・利用者数）が使われます。
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Step 3 &nbsp;PDF生成</div>
     <button class="btn btn-blue" id="generateBtn" onclick="generate()" disabled>
       <span id="btnSpinner" style="display:none">⏳</span>
       <span id="btnText">3つのファイルが揃うとPDF生成できます</span>
@@ -927,6 +943,10 @@ function setStatus(type, msg) {
   bar.textContent = msg;
 }
 
+// ─── ファイル名プレフィックスを復元 ───
+const savedPrefix = localStorage.getItem('careplan_prefix');
+if (savedPrefix) document.getElementById('filenamePrefix').value = savedPrefix;
+
 // ─── ドラッグ&ドロップ ───
 const dz = document.getElementById('dropZone');
 dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('dragover'); });
@@ -979,13 +999,17 @@ async function generate() {
 
     const html = buildHtml(users, records, details, summaries, totals, ownPid, targetMonth);
 
-    // プレビュー表示
+    // プレビュー表示（ページごとに独立した page-wrap に分割）
     const content = document.getElementById('previewContent');
-    const wrap = document.createElement('div');
-    wrap.className = 'page-wrap';
-    wrap.innerHTML = html;
     content.innerHTML = '';
-    content.appendChild(wrap);
+    const temp = document.createElement('div');
+    temp.innerHTML = html;
+    for (const page of temp.querySelectorAll('.page')) {
+      const wrap = document.createElement('div');
+      wrap.className = 'page-wrap';
+      wrap.appendChild(page);
+      content.appendChild(wrap);
+    }
 
     const y = parseInt(targetMonth.slice(0,4)), m = parseInt(targetMonth.slice(4,6));
     document.getElementById('previewTitle').textContent =
@@ -1028,11 +1052,12 @@ function doPrint() {
 }
 
 function doSave() {
-  const msg = document.getElementById('previewTitle');
-  const orig = msg.textContent;
-  msg.textContent = '👉 印刷画面で「送信先」を「PDFとして保存」に変更して保存してください';
-  setTimeout(() => { msg.textContent = orig; }, 6000);
+  const prefix = (document.getElementById('filenamePrefix') || {}).value || '';
+  const title  = document.getElementById('previewTitle').textContent;
+  const origDocTitle = document.title;
+  document.title = prefix.trim() || title;
   window.print();
+  setTimeout(() => { document.title = origDocTitle; }, 2000);
 }
 
 function backToUpload() {
