@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>サービス利用票・提供票別表 PDF生成</title>
+<style>
+/* ═══════════════════════════════════════════════════════════
+   画面UI（印刷時は非表示）
+═══════════════════════════════════════════════════════════ */
+@media screen {
+  :root {
+    --blue:  #2563eb; --green: #16a34a; --gray: #64748b;
+    --light: #f8fafc; --border: #e2e8f0; --red: #dc2626;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Yu Gothic UI","游ゴシック","Meiryo UI","メイリオ",sans-serif;
+    background: #f1f5f9; min-height: 100vh;
+  }
+
+  /* ── 印刷プレビュー表示中のレイアウト ── */
+  body.preview-mode { background: #334155; }
+  body.preview-mode .app-ui { display: none; }
+  body.preview-mode #previewWrap { display: block; }
+
+  /* ── 通常（アップロード）モード ── */
+  .app-ui {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 24px 16px;
+  }
+  .app-title { font-size: 20px; font-weight: 700; color: #1e3a5f; margin-bottom: 4px; }
+  .app-sub   { font-size: 13px; color: var(--gray); margin-bottom: 24px; }
+
+  .card {
+    background: white; border-radius: 16px;
+    box-shadow: 0 2px 16px rgba(0,0,0,.08);
+    padding: 28px; width: 100%; max-width: 580px; margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 12px; font-weight: 700; color: var(--gray);
+    text-transform: uppercase; letter-spacing: .08em;
+    margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  }
+
+  .drop-zone {
+    border: 2.5px dashed #94a3b8; border-radius: 12px;
+    padding: 28px 20px; text-align: center; cursor: pointer;
+    transition: all .2s; background: #f8fbff; margin-bottom: 16px;
+  }
+  .drop-zone:hover, .drop-zone.dragover { border-color: var(--blue); background: #eff6ff; }
+  .drop-icon  { font-size: 36px; margin-bottom: 8px; }
+  .drop-main  { font-size: 15px; font-weight: 700; color: #1e40af; margin-bottom: 4px; }
+  .drop-hint  { font-size: 12px; color: var(--gray); line-height: 1.6; }
+
+  .file-list  { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+  .file-item  {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--light); font-size: 13px; transition: all .2s;
+  }
+  .file-item.ok  { background: #f0fdf4; border-color: #86efac; }
+  .file-item.err { background: #fef2f2; border-color: #fca5a5; }
+  .file-icon { font-size: 18px; flex-shrink: 0; }
+  .file-info { flex: 1; min-width: 0; }
+  .file-label { font-weight: 700; font-size: 12px; color: var(--gray); }
+  .file-name  { font-size: 12px; color: #475569; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge {
+    font-size: 11px; font-weight: 700; padding: 3px 10px;
+    border-radius: 20px; white-space: nowrap; flex-shrink: 0;
+  }
+  .badge-wait { background: #e2e8f0; color: #64748b; }
+  .badge-ok   { background: #22c55e; color: white; }
+
+  .btn {
+    width: 100%; padding: 14px; border: none; border-radius: 10px;
+    font-size: 15px; font-weight: 700; cursor: pointer;
+    transition: all .15s; display: flex; align-items: center;
+    justify-content: center; gap: 10px; letter-spacing: .02em; margin-bottom: 10px;
+  }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-blue  { background: var(--blue); color: white; }
+  .btn-blue:hover:not(:disabled)  { background: #1d4ed8; transform: translateY(-1px); }
+  .btn-gray  { background: #e2e8f0; color: #475569; }
+  .btn-gray:hover:not(:disabled)  { background: #cbd5e1; }
+  .btn-green { background: var(--green); color: white; }
+  .btn-green:hover:not(:disabled) { background: #15803d; transform: translateY(-1px); }
+
+  .status-bar {
+    width: 100%; max-width: 580px; border-radius: 10px;
+    padding: 10px 16px; font-size: 13px; text-align: center;
+    min-height: 38px; transition: all .3s;
+  }
+  .status-bar.info    { background: #eff6ff; color: #1e40af; }
+  .status-bar.success { background: #f0fdf4; color: #15803d; }
+  .status-bar.error   { background: #fef2f2; color: #b91c1c; }
+
+  /* ── プレビューラッパー ── */
+  #previewWrap { display: none; }
+  .preview-bar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: #1e293b; color: white; padding: 10px 16px;
+    display: flex; align-items: center; gap: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.4);
+  }
+  .preview-bar .pbar-title { flex: 1; font-size: 14px; font-weight: 700; }
+  .preview-bar .pbtn {
+    padding: 8px 20px; border: none; border-radius: 8px;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+  }
+  .pbtn-print { background: #22c55e; color: white; }
+  .pbtn-back  { background: #475569; color: white; }
+  .pbtn-print:hover { background: #16a34a; }
+  .pbtn-back:hover  { background: #334155; }
+
+  #previewContent {
+    margin-top: 52px; padding: 24px 16px; display: flex; flex-direction: column;
+    align-items: center; gap: 12px; overflow-y: auto;
+  }
+  /* A4横（297×210mm）を画面幅に合わせてスケール表示 */
+  .page-wrap {
+    background: white;
+    box-shadow: 0 4px 20px rgba(0,0,0,.4);
+    border-radius: 2px;
+    /* A4横: 297mm × 210mm = 1122.52px × 793.70px (at 96dpi)
+       but we'll use approximate: width=1122px */
+    width: 1122px;
+    transform-origin: top center;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   印刷時のみ表示
+═══════════════════════════════════════════════════════════ */
+@media print {
+  .app-ui     { display: none !important; }
+  .preview-bar { display: none !important; }
+  #previewContent { margin: 0 !important; padding: 0 !important; }
+  .page-wrap  { box-shadow: none !important; border-radius: 0 !important; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PDFページ CSS（画面＋印刷共通）
+═══════════════════════════════════════════════════════════ */
+@page { size: A4 landscape; margin: 7mm; }
+
+.page { width: 283mm; min-height: 192mm; padding: 3mm 4mm; page-break-after: always; }
+
+.hdr { border: 0.5pt solid #000; margin-bottom: 1.5mm; font-size: 6.5pt; }
+.hdr-row { display: flex; border-bottom: 0.5pt solid #000; }
+.hdr-row:last-child { border-bottom: none; }
+.hc { border-right: 0.5pt solid #000; padding: 0.4mm 1mm; flex-shrink: 0; }
+.hc:last-child { border-right: none; flex: 1; }
+.hl { background: #e8e8e8; font-weight: bold; white-space: nowrap; }
+
+table.cal { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 5pt; }
+table.cal th, table.cal td {
+  border: 0.3pt solid #555; padding: 0 0.3mm;
+  text-align: center; vertical-align: middle; white-space: nowrap;
+  overflow: hidden; height: 5.2mm;
+}
+.th-bg  { background: #cde; font-weight: bold; }
+.th-sub { background: #ddf; font-size: 4.5pt; }
+.td-t   { background: #eef3fa; font-weight: bold; }
+.td-s   { text-align: left; padding-left: 0.5mm; }
+.td-p   { text-align: left; padding-left: 0.5mm; font-size: 4.5pt; }
+.td-r   { text-align: right; padding-right: 0.3mm; }
+.c      { text-align: center; }
+.sat    { color: #00b; } .sun { color: #b00; }
+.satbg  { background: #f8f8ff; } .sunbg { background: #fff5f5; }
+
+table.bp { width: 265mm; border-collapse: collapse; table-layout: fixed; font-size: 5pt; }
+table.bp th {
+  border: 0.3pt solid #555; padding: 0 0.2mm; background: #cde;
+  font-weight: bold; text-align: center; vertical-align: middle;
+  font-size: 4.5pt; line-height: 1.3; white-space: normal; height: 9mm;
+}
+table.bp td {
+  border: 0.3pt solid #555; padding: 0 0.5mm;
+  text-align: right; vertical-align: middle; height: 5mm; overflow: hidden;
+}
+table.bp td.l { text-align: left; }
+table.bp td.c { text-align: center; }
+.r-own td { background: #fff5f5; }
+.r-sum td { background: #ddf0ff; font-weight: bold; }
+.r-tot td { background: #cde; font-weight: bold; }
+
+table.ft { border-collapse: collapse; font-size: 6pt; margin-top: 2mm; width: 260mm; table-layout: fixed; }
+table.ft th { background: #cde; border: 0.3pt solid #555; padding: 0.5mm 2mm; text-align: center; white-space: normal; line-height: 1.3; }
+table.ft td { border: 0.3pt solid #555; padding: 0.5mm 2mm; text-align: right; overflow: hidden; }
+table.ft col.ft-ins { width: 55mm; }
+table.ft col.ft-pub { width: 55mm; }
+table.ft col.ft-soc { width: 90mm; }
+table.ft col.ft-usr { width: 55mm; }
+</style>
+</head>
+<body>
+
+<!-- ── 通常モード：アップロード画面 ── -->
+<div class="app-ui">
+  <div class="app-title">サービス利用票・提供票別表 PDF生成</div>
+  <div class="app-sub">ケアプランデータ連携システムのCSVファイルからPDFを生成します</div>
+
+  <div class="card">
+    <div class="card-title">Step 1 &nbsp;CSVファイルを選択</div>
+    <div class="drop-zone" id="dropZone">
+      <div class="drop-icon">📂</div>
+      <div class="drop-main">ここにCSVファイルをドラッグ＆ドロップ</div>
+      <div class="drop-hint">または下のボタンから選択 &nbsp;|&nbsp; 3ファイル同時に選択できます<br>UPPLAN・UPSIKYU・UPHOSOKU の3種類が必要です</div>
+    </div>
+    <input type="file" id="fileInput" multiple accept=".csv" style="display:none">
+    <button class="btn btn-gray" onclick="document.getElementById('fileInput').click()">
+      📁　ファイルを選択する
+    </button>
+
+    <div class="file-list">
+      <div class="file-item" id="item-upplan">
+        <div class="file-icon">📋</div>
+        <div class="file-info">
+          <div class="file-label">UPPLAN（サービス計画）</div>
+          <div class="file-name" id="name-upplan">ファイル未選択</div>
+        </div>
+        <span class="badge badge-wait" id="badge-upplan">未選択</span>
+      </div>
+      <div class="file-item" id="item-upsikyu">
+        <div class="file-icon">💴</div>
+        <div class="file-info">
+          <div class="file-label">UPSIKYU（単位数・請求）</div>
+          <div class="file-name" id="name-upsikyu">ファイル未選択</div>
+        </div>
+        <span class="badge badge-wait" id="badge-upsikyu">未選択</span>
+      </div>
+      <div class="file-item" id="item-uphosoku">
+        <div class="file-icon">👤</div>
+        <div class="file-info">
+          <div class="file-label">UPHOSOKU（被保険者情報）</div>
+          <div class="file-name" id="name-uphosoku">ファイル未選択</div>
+        </div>
+        <span class="badge badge-wait" id="badge-uphosoku">未選択</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Step 2 &nbsp;PDF生成</div>
+    <button class="btn btn-blue" id="generateBtn" onclick="generate()" disabled>
+      <span id="btnSpinner" style="display:none">⏳</span>
+      <span id="btnText">3つのファイルが揃うとPDF生成できます</span>
+    </button>
+    <button class="btn btn-gray" onclick="resetFiles()">リセット</button>
+  </div>
+
+  <div class="status-bar" id="statusBar"></div>
+</div>
+
+<!-- ── プレビューモード ── -->
+<div id="previewWrap">
+  <div class="preview-bar">
+    <div class="pbar-title" id="previewTitle">プレビュー</div>
+    <button class="pbtn pbtn-print" onclick="doPrint()">🖨　印刷 / PDFとして保存</button>
+    <button class="pbtn pbtn-back"  onclick="backToUpload()">← 戻る</button>
+  </div>
+  <div id="previewContent"></div>
+</div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════════
+// サービスコードマスター
+// 出典: 厚生労働省 介護給付費単位数等サービスコード表（令和8年6月1日施行版）
+// ═══════════════════════════════════════════════════════════
+const SC = {
+  // 訪問看護（指定訪問看護ステーション）
+  '131111': '訪問看護（Ⅰ）イ（30分未満）',
+  '131211': '訪問看護（Ⅰ）ロ（30分以上1時間未満）',
+  '131311': '訪問看護（Ⅰ）ハ（1時間以上1時間30分未満）',
+  '131411': '訪問看護（Ⅰ）ニ（1時間30分以上）',
+  '131501': '訪問看護（Ⅰ）ホ（理学療法士等・20分）',
+  '133100': '緊急時訪問看護加算（Ⅱ）',
+  '133200': '緊急時訪問看護加算（Ⅱ）（医療機関）',
+  '134000': '特別管理加算（Ⅰ）',
+  '134001': '特別管理加算（Ⅱ）',
+  // 訪問介護
+  '111111': '訪問介護（身体介護）20分以上30分未満',
+  '111211': '訪問介護（身体介護）30分以上1時間未満',
+  '111311': '訪問介護（身体介護）1時間以上1時間30分未満',
+  '111411': '訪問介護（身体介護）1時間30分以上',
+  '112049': '訪問介護（複合型）30分以上1時間未満',
+  '116275': '介護職員等処遇改善加算（Ⅰ）',
+  // 通所介護
+  '152441': '通所介護（7時間以上8時間未満）',
+  '155052': '個別機能訓練加算（Ⅱ）',
+  '155053': '個別機能訓練加算（Ⅰ）ロ',
+  '155301': '入浴介助加算（Ⅰ）',
+  '156102': 'サービス提供体制強化加算（Ⅲ）',
+  '156361': '科学的介護推進体制加算',
+  '156107': '介護職員等処遇改善加算（Ⅱ）',
+  // 通所リハビリテーション
+  '163728': '通所リハビリ（6時間以上7時間未満）',
+  '165301': '入浴介助加算（Ⅰ）',
+  '165614': '中重度者ケア体制加算',
+  '166100': 'サービス提供体制強化加算（Ⅱ）',
+  '166147': 'サービス提供体制強化加算（Ⅳ）',
+  '166361': '科学的介護推進体制加算',
+  '166107': '介護職員等処遇改善加算（Ⅰ）',
+  // 認知症対応型通所介護
+  '722348': '認知症対応型通所介護（7時間以上8時間未満）',
+  '725050': '個別機能訓練加算（Ⅰ）',
+  '725051': '個別機能訓練加算（Ⅱ）',
+  '725301': '入浴介助加算（Ⅰ）',
+  '726099': 'サービス提供体制強化加算（Ⅰ）',
+  '726124': 'ADL維持等加算（Ⅰ）',
+  '726361': '科学的介護推進体制加算',
+  '726107': '介護職員等処遇改善加算（Ⅰ）',
+  // 福祉用具貸与
+  '171007': '福祉用具貸与',
+};
+
+const ST = {
+  '11': '訪問介護', '13': '訪問看護', '15': '通所介護',
+  '16': '通所リハビリ', '17': '福祉用具貸与', '72': '認知症対応型通所介護',
+};
+
+const CL = {
+  '11': '要支援1', '12': '要支援2',
+  '21': '要介護1', '22': '要介護2', '23': '要介護3',
+  '24': '要介護4', '25': '要介護5',
+};
+
+const WD = ['月', '火', '水', '木', '金', '土', '日'];
+
+// ═══════════════════════════════════════════════════════════
+// ヘルパー関数
+// ═══════════════════════════════════════════════════════════
+function fn(v) {
+  if (v === null || v === undefined || String(v).trim() === '') return '';
+  const n = parseInt(parseFloat(String(v)));
+  if (isNaN(n)) return String(v);
+  return n.toLocaleString('ja-JP');
+}
+
+function ftime(t) {
+  if (!t || t.trim() === '' || t.trim() === '9999') return '';
+  const z = t.trim().padStart(4, '0');
+  return `${z.slice(0,2)}:${z.slice(2)}`;
+}
+
+function fd8(d) {
+  return (d && d.length === 8) ? `${d.slice(0,4)}/${d.slice(4,6)}/${d.slice(6)}` : (d || '');
+}
+
+function rwa(y) { return y - 2018; }
+
+function getDaysInMonth(y, m) { return new Date(y, m, 0).getDate(); }
+
+// 0=月, 5=土, 6=日（Pythonの weekday() と同じ）
+function getDayOfWeek(y, m, d) { return (new Date(y, m-1, d).getDay() + 6) % 7; }
+
+// ═══════════════════════════════════════════════════════════
+// CSVパーサー（CP932/Shift-JIS対応）
+// ═══════════════════════════════════════════════════════════
+async function parseRows(file) {
+  const buf  = await file.arrayBuffer();
+  const text = new TextDecoder('shift_jis').decode(buf);
+  return parseCSV(text);
+}
+
+function parseCSV(text) {
+  const rows  = [];
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    rows.push(parseCSVLine(line));
+  }
+  return rows;
+}
+
+function parseCSVLine(line) {
+  const result = [];
+  let i = 0;
+  while (i <= line.length) {
+    if (i === line.length) { result.push(''); break; }
+    if (line[i] === '"') {
+      i++;
+      let val = '';
+      while (i < line.length) {
+        if (line[i] === '"' && line[i+1] === '"') { val += '"'; i += 2; }
+        else if (line[i] === '"') { i++; break; }
+        else { val += line[i++]; }
+      }
+      result.push(val);
+      if (i < line.length && line[i] === ',') i++;
+    } else {
+      const end = line.indexOf(',', i);
+      if (end === -1) { result.push(line.slice(i)); break; }
+      result.push(line.slice(i, end));
+      i = end + 1;
+    }
+  }
+  return result;
+}
+
+function detectType(filename) {
+  const u = filename.toUpperCase();
+  if (u.includes('UPPLAN'))   return 'upplan';
+  if (u.includes('UPSIKYU'))  return 'upsikyu';
+  if (u.includes('UPHOSOKU')) return 'uphosoku';
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════
+// データパーサー
+// ═══════════════════════════════════════════════════════════
+function readUphosoku(rows) {
+  const users = {};
+  for (const row of rows) {
+    if (row.length < 19) continue;
+    const no = row[2].trim();
+    if (!no) continue;
+    const lv = String(row[17]).trim();
+    users[no] = {
+      insured_no:      no,
+      name_kana:       row[4].trim(),
+      name:            row[5].trim(),
+      gender:          row[6].trim() === '1' ? '男' : '女',
+      birth_date:      row[7].trim(),
+      address:         row[9].trim(),
+      certified_start: row[13].trim(),
+      certified_end:   row[14].trim(),
+      care_level:      CL[lv] || `要介護${lv}`,
+      benefit_limit:   row.length > 18 ? row[18].trim() : '',
+      target_month:    row[row.length - 1].trim(),
+    };
+  }
+  return users;
+}
+
+function readUpplan(rows) {
+  const records = [];
+  for (const row of rows) {
+    if (row.length < 20) continue;
+    const no = row[2].trim();
+    const sd = row[9].trim();
+    if (!no || sd.length !== 8) continue;
+    records.push({
+      insured_no:    no,
+      day:           parseInt(sd.slice(6, 8)),
+      start_time:    row.length > 11 ? row[11].trim() : '',
+      end_time:      row.length > 12 ? row[12].trim() : '',
+      service_code:  row.length > 14 ? row[14].trim() : '',
+      provider_id:   row.length > 19 ? row[19].trim() : '',
+      provider_name: row.length > 20 ? row[20].trim() : '',
+      is_own:        row.length > 21 ? row[21].trim() === '1' : false,
+      units:         (row.length > 7 && /^\d+$/.test(row[7].trim())) ? parseInt(row[7].trim()) : 0,
+    });
+  }
+  return records;
+}
+
+function readUpsikyu(rows) {
+  const details   = {};
+  const summaries = {};
+  const totals    = {};
+  for (const row of rows) {
+    if (row.length < 16) continue;
+    const no  = row[2].trim();
+    if (!no) continue;
+    const pid = row[6].trim();
+    const sc  = row[8].trim();
+
+    if (pid === '9999999999' && sc === '999999') {
+      totals[no] = {
+        total_units:  row.length > 16 ? row[16].trim() : '',
+        total_amount: row.length > 23 ? row[23].trim() : '',
+        insurer_pay:  row.length > 25 ? row[25].trim() : '',
+        patient_pay:  row.length > 27 ? row[27].trim() : '',
+      };
+    } else if (sc.includes('AAAA')) {
+      if (!summaries[no]) summaries[no] = [];
+      summaries[no].push({
+        type_prefix:   sc.replace('AAAA', ''),
+        provider_id:   pid,
+        provider_name: row[5].trim(),
+        total_units:   row.length > 17 ? row[17].trim() : '',
+        limit_units:   row.length > 21 ? row[21].trim() : '',
+        unit_price:    row.length > 22 ? row[22].trim() : '',
+        total_amount:  row.length > 23 ? row[23].trim() : '',
+        benefit_rate:  row.length > 24 ? row[24].trim() : '',
+        insurer_pay:   row.length > 25 ? row[25].trim() : '',
+        patient_pay:   row.length > 27 ? row[27].trim() : '',
+      });
+    } else if (sc) {
+      if (!details[no]) details[no] = [];
+      details[no].push({
+        provider_id:   pid,
+        provider_name: row[5].trim(),
+        is_own:        row[7].trim() === '1',
+        service_code:  sc,
+        item_code:     row.length > 9  ? row[9].trim()  : '',
+        item_name:     row.length > 11 ? row[11].trim() : '',
+        units:         row.length > 12 ? row[12].trim() : '',
+        count:         row.length > 15 ? row[15].trim() : '',
+        total_units:   row.length > 16 ? row[16].trim() : '',
+        benefit_units: row.length > 17 ? row[17].trim() : '',
+      });
+    }
+  }
+  return { details, summaries, totals };
+}
+
+// ═══════════════════════════════════════════════════════════
+// HTML生成
+// ═══════════════════════════════════════════════════════════
+function hdrHtml(user, ownPid) {
+  const cs = fd8(user.certified_start);
+  const ce = fd8(user.certified_end);
+  const bd = fd8(user.birth_date);
+  return `<div class="hdr">
+  <div class="hdr-row">
+    <div class="hc hl" style="width:22mm">被保険者番号</div>
+    <div class="hc" style="width:28mm;font-size:8pt;font-weight:bold">${user.insured_no||''}</div>
+    <div class="hc hl" style="width:10mm">氏名</div>
+    <div class="hc" style="width:38mm;font-size:8pt;font-weight:bold">${user.name||''}　${user.name_kana||''}</div>
+    <div class="hc hl" style="width:10mm">性別</div>
+    <div class="hc" style="width:7mm">${user.gender||''}</div>
+    <div class="hc hl" style="width:14mm">生年月日</div>
+    <div class="hc" style="width:22mm">${bd}</div>
+    <div class="hc hl" style="width:14mm">要介護度</div>
+    <div class="hc" style="width:16mm;font-weight:bold">${user.care_level||''}</div>
+  </div>
+  <div class="hdr-row">
+    <div class="hc hl" style="width:22mm">認定期間</div>
+    <div class="hc" style="width:42mm">${cs}　〜　${ce}</div>
+    <div class="hc hl" style="width:30mm;white-space:normal;font-size:5.5pt">区分支給限度基準額</div>
+    <div class="hc" style="width:28mm;font-weight:bold">${fn(user.benefit_limit)}　単位</div>
+    <div class="hc hl" style="width:16mm">自事業所番号</div>
+    <div class="hc" style="width:22mm">${ownPid}</div>
+  </div>
+</div>`;
+}
+
+function calHtml(user, records, ownPid, monthStr, y, m) {
+  const no  = user.insured_no;
+  const dim = getDaysInMonth(y, m);
+  const dwd = {};
+  for (let d = 1; d <= dim; d++) dwd[d] = getDayOfWeek(y, m, d);
+
+  const sdays  = new Map(); // key -> Set<day>
+  const sunits = new Map(); // key -> total units
+  const pnames = {};
+
+  for (const r of records) {
+    if (r.insured_no !== no) continue;
+    const k = `${r.start_time}\x00${r.end_time}\x00${r.provider_id}\x00${r.service_code}`;
+    if (!sdays.has(k)) sdays.set(k, new Set());
+    sdays.get(k).add(r.day);
+    sunits.set(k, (sunits.get(k) || 0) + r.units);
+    pnames[r.provider_id] = r.provider_name;
+  }
+
+  const kparts = k => k.split('\x00'); // [st, et, pid, sc]
+  const sorted = [...sdays.keys()].sort((a, b) => {
+    const [ast,,apid,asc] = kparts(a), [bst,,bpid,bsc] = kparts(b);
+    if (ast !== bst) return ast < bst ? -1 : 1;
+    if (apid !== bpid) return apid < bpid ? -1 : 1;
+    return asc < bsc ? -1 : 1;
+  });
+
+  const timeMap = new Map(); // "st\x00et" -> keys[]
+  for (const k of sorted) {
+    const [st, et] = kparts(k);
+    const tk = `${st}\x00${et}`;
+    if (!timeMap.has(tk)) timeMap.set(tk, []);
+    timeMap.get(tk).push(k);
+  }
+
+  const W = { time:13, svc:25, prv:23, jk:5, yj:5, day:5.2, tot:10, cnt:8 };
+  const h = [];
+  h.push('<div class="page">');
+  h.push(`<div style="text-align:center;font-size:9pt;font-weight:bold;margin-bottom:1mm">サービス利用票（居宅（介護予防）サービス計画）　${monthStr}分</div>`);
+  h.push(hdrHtml(user, ownPid));
+  h.push('<table class="cal"><colgroup>');
+  for (const key of ['time','svc','prv','jk','yj'])
+    h.push(`<col style="width:${W[key]}mm">`);
+  for (let i = 0; i < dim; i++)
+    h.push(`<col style="width:${W.day}mm">`);
+  h.push(`<col style="width:${W.tot}mm"><col style="width:${W.cnt}mm"></colgroup><thead>`);
+
+  h.push('<tr>');
+  for (const [label, rs] of [['提供時間帯',2],['サービス内容',2],['事業所名',2],['自<br>計',2],['実<br>績',2]])
+    h.push(`<th class="th-bg" rowspan="${rs}">${label}</th>`);
+  for (let d = 1; d <= dim; d++) {
+    const wd = dwd[d], cls = wd===5?' sat':(wd===6?' sun':'');
+    h.push(`<th class="th-bg${cls}">${d}</th>`);
+  }
+  h.push('<th class="th-bg" rowspan="2">合計<br>単位</th><th class="th-bg" rowspan="2">回<br>数</th></tr><tr>');
+  for (let d = 1; d <= dim; d++) {
+    const wd = dwd[d], cls = wd===5?' sat':(wd===6?' sun':'');
+    h.push(`<th class="th-sub${cls}">${WD[wd]}</th>`);
+  }
+  h.push('</tr></thead><tbody>');
+
+  for (const [tk, keys] of timeMap) {
+    const [st, et] = tk.split('\x00');
+    let tstr;
+    if (st && st !== '9999') {
+      tstr = ftime(st) + (et && et !== '9999' ? `〜${ftime(et)}` : '');
+    } else { tstr = '時間外等'; }
+
+    let first = true;
+    for (const k of keys) {
+      const [,,pid,sc] = kparts(k);
+      const days = sdays.get(k);
+      const tot  = sunits.get(k);
+      const pn   = pnames[pid] || pid;
+      const sn   = SC[sc] || sc;
+
+      h.push('<tr>');
+      h.push(`<td class="td-t">${first ? tstr : ''}</td>`);
+      h.push(`<td class="td-s">${sn}</td>`);
+      h.push(`<td class="td-p">${pn}</td>`);
+      h.push(`<td class="c">${pid === ownPid ? '●' : ''}</td>`);
+      h.push('<td class="c">実</td>');
+      for (let d = 1; d <= dim; d++) {
+        const wd = dwd[d], bg = wd===6?' sunbg':(wd===5?' satbg':'');
+        h.push(`<td class="${bg}">${days.has(d) ? '●' : ''}</td>`);
+      }
+      h.push(`<td class="td-r">${tot ? fn(tot) : ''}</td>`);
+      h.push(`<td class="c">${days.size}</td></tr>`);
+      first = false;
+    }
+  }
+  h.push('</tbody></table></div>');
+  return h.join('');
+}
+
+function bpHtml(user, details, summaries, totals, ownPid, monthStr, y, m, createdAt) {
+  const no    = user.insured_no;
+  const rows  = details[no]   || [];
+  const sums  = summaries[no] || [];
+  const grand = totals[no]    || {};
+
+  // groups: "pid|tp" -> rows[]
+  const groups = new Map();
+  for (const r of rows) {
+    const tp = r.service_code.length >= 2 ? r.service_code.slice(0, 2) : '';
+    const gk = `${r.provider_id}|${tp}`;
+    if (!groups.has(gk)) groups.set(gk, []);
+    groups.get(gk).push(r);
+  }
+
+  const smap = {};
+  for (const s of sums) smap[`${s.provider_id}|${s.type_prefix}`] = s;
+
+  // pmap: pid -> [(tp, rows[])]
+  const pmap = new Map();
+  for (const [gk, rl] of groups) {
+    const sep = gk.indexOf('|');
+    const pid = gk.slice(0, sep), tp = gk.slice(sep + 1);
+    if (!pmap.has(pid)) pmap.set(pid, []);
+    pmap.get(pid).push([tp, rl]);
+  }
+
+  const COLS = [
+    ['事業所名',22],['事業所番号',16],['サービス内容/種類',26],['サービスコード',14],
+    ['単位数<br>(%)',8],['合計数/<br>金額',8],['回数',8],
+    ['合計<br>単位数',13],['給付管理<br>単位数',13],
+    ['種類支給<br>限度基準<br>単位数',12],['種類限度<br>超過内<br>単位数',10],
+    ['区分支給<br>限度基準<br>単位数',12],['区分限度<br>超過内<br>単位数',10],
+    ['単位数<br>単価',12],['費用総額<br>(保険対象)',14],['給付率<br>(%)',8],
+    ['保険費<br>請求額',14],['定額<br>利用者負担',11],['利用者<br>負担額',14],
+  ];
+
+  const h = [];
+  h.push('<div class="page">');
+  h.push(`<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:0.8mm">
+  <div style="font-size:6.5pt;font-weight:bold">区分支給限度管理・利用者負担計算</div>
+  <div style="font-size:9.5pt;font-weight:bold">${monthStr}　　サービス提供票別表</div>
+  <div style="font-size:6pt">作成年月日：${createdAt}</div>
+</div>
+<div style="text-align:right;font-size:6.5pt;margin-bottom:1mm">
+  被保険者番号：<b>${user.insured_no||''}</b>
+  利用者：<b style="font-size:8pt">${user.name||''}</b>　様
+</div>`);
+
+  h.push('<table class="bp"><colgroup>');
+  for (const [,w] of COLS) h.push(`<col style="width:${w}mm">`);
+  h.push('</colgroup><thead><tr>');
+  h.push('<th rowspan="2">事業所名</th><th rowspan="2">事業所番号</th>');
+  h.push('<th rowspan="2">サービス内容<br>/種類</th><th rowspan="2">サービス<br>コード</th>');
+  h.push('<th colspan="2" style="border-bottom:0.3pt solid #555">割引適用後</th>');
+  h.push('<th rowspan="2">回数</th>');
+  h.push('<th rowspan="2">合計<br>単位数</th><th rowspan="2">給付管理<br>単位数</th>');
+  h.push('<th rowspan="2">種類支給<br>限度基準<br>単位数</th><th rowspan="2">種類限度<br>超過内<br>単位数</th>');
+  h.push('<th rowspan="2">区分支給<br>限度基準<br>単位数</th><th rowspan="2">区分限度<br>超過内<br>単位数</th>');
+  h.push('<th rowspan="2">単位数<br>単価</th><th rowspan="2">費用総額<br>(保険対象)</th>');
+  h.push('<th rowspan="2">給付率<br>(%)</th><th rowspan="2">保険費<br>請求額</th>');
+  h.push('<th rowspan="2">定額<br>利用者負担</th><th rowspan="2">利用者<br>負担額</th>');
+  h.push('</tr><tr><th>単位数<br>(%)</th><th>合計数/<br>金額</th></tr></thead><tbody>');
+
+  for (const [pid, typeList] of pmap) {
+    const isOwn = (pid === ownPid);
+    const pname = (typeList[0] && typeList[0][1] && typeList[0][1][0]) ? typeList[0][1][0].provider_name : pid;
+    const totalRows = typeList.reduce((s, [,rl]) => s + rl.length + 1, 0);
+    let firstProw = true;
+
+    for (const [tp, rlist] of typeList) {
+      const summ  = smap[`${pid}|${tp}`] || {};
+      const tname = ST[tp] || tp;
+      const rcls  = isOwn ? ' class="r-own"' : '';
+
+      for (const r of rlist) {
+        const sn      = SC[r.service_code] || r.service_code;
+        const item    = r.item_name || r.item_code;
+        const display = item ? `${sn}　${item}` : sn;
+        h.push(`<tr${rcls}>`);
+        if (firstProw) {
+          h.push(`<td class="l" rowspan="${totalRows}" style="vertical-align:middle">${pname}</td>`);
+          h.push(`<td class="c" rowspan="${totalRows}" style="vertical-align:middle;font-size:4pt">${pid}</td>`);
+          firstProw = false;
+        }
+        h.push(`<td class="l">${display}</td>`);
+        h.push(`<td class="c">${r.service_code}</td>`);
+        h.push(`<td>${fn(r.units)}</td><td></td>`);
+        h.push(`<td class="c">${r.count}</td>`);
+        h.push(`<td>${fn(r.total_units)}</td><td>${fn(r.benefit_units)}</td>`);
+        h.push('<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>');
+        h.push('</tr>');
+      }
+
+      h.push('<tr class="r-sum">');
+      h.push(`<td class="c" colspan="2">${tname}合計</td>`);
+      h.push('<td></td><td></td><td></td><td></td>');
+      h.push(`<td>${fn(summ.total_units)}</td><td>${fn(summ.total_units)}</td>`);
+      h.push('<td></td><td></td>');
+      h.push(`<td>${fn(summ.limit_units)}</td><td></td>`);
+      h.push(`<td class="c">${summ.unit_price||''}</td>`);
+      h.push(`<td>${fn(summ.total_amount)}</td>`);
+      const rate = summ.benefit_rate || '';
+      h.push(`<td class="c">${rate}${rate?'%':''}</td>`);
+      h.push(`<td>${fn(summ.insurer_pay)}</td><td></td><td>${fn(summ.patient_pay)}</td>`);
+      h.push('</tr>');
+    }
+  }
+
+  h.push('<tr class="r-tot">');
+  h.push(`<td class="c" colspan="2">区分支給限度基準額<br>${fn(user.benefit_limit)} 単位</td>`);
+  h.push('<td class="c" colspan="4">合　計</td>');
+  h.push(`<td>${fn(grand.total_units)}</td><td>${fn(grand.total_units)}</td>`);
+  h.push('<td></td><td></td>');
+  h.push(`<td>${fn(grand.total_units)}</td><td></td><td></td>`);
+  h.push(`<td>${fn(grand.total_amount)}</td><td></td>`);
+  h.push(`<td>${fn(grand.insurer_pay)}</td><td></td><td>${fn(grand.patient_pay)}</td>`);
+  h.push('</tr></tbody></table>');
+
+  h.push(`<table class="ft">
+  <colgroup><col class="ft-ins"><col class="ft-pub"><col class="ft-soc"><col class="ft-usr"></colgroup>
+  <tr><th colspan="4" style="text-align:center">請求額の計算</th></tr>
+  <tr><th>保険請求分</th><th>公費請求額</th><th>社会福祉法人等による<br>利用者負担額の減免</th><th>利用者請求額</th></tr>
+  <tr>
+    <td>${fn(grand.insurer_pay)} 円</td>
+    <td>　円</td><td>　円</td>
+    <td>${fn(grand.patient_pay)} 円</td>
+  </tr>
+</table>`);
+  h.push('</div>');
+  return h.join('');
+}
+
+function buildHtml(users, records, details, summaries, totals, ownPid, targetMonth) {
+  const y  = parseInt(targetMonth.slice(0, 4));
+  const m  = parseInt(targetMonth.slice(4, 6));
+  const rw = rwa(y);
+  const ms = `令和${rw}年${m}月`;
+  const now = new Date();
+  const crw = rwa(now.getFullYear());
+  const created = `令和${crw}年${String(now.getMonth()+1).padStart(2,'0')}月${String(now.getDate()).padStart(2,'0')}日`;
+
+  const parts = [];
+  for (const [, user] of Object.entries(users).sort((a, b) => a[0] < b[0] ? -1 : 1)) {
+    parts.push(calHtml(user, records, ownPid, ms, y, m));
+    parts.push(bpHtml(user, details, summaries, totals, ownPid, ms, y, m, created));
+  }
+  return parts.join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+// UI状態管理
+// ═══════════════════════════════════════════════════════════
+const files = { upplan: null, upsikyu: null, uphosoku: null };
+const FILE_LABELS = {
+  upplan:   'UPPLAN（サービス計画）',
+  upsikyu:  'UPSIKYU（単位数・請求）',
+  uphosoku: 'UPHOSOKU（被保険者情報）',
+};
+
+function setFile(type, file) {
+  files[type] = file;
+  const item  = document.getElementById(`item-${type}`);
+  const badge = document.getElementById(`badge-${type}`);
+  const name  = document.getElementById(`name-${type}`);
+  item.className  = 'file-item ok';
+  badge.className = 'badge badge-ok';
+  badge.textContent = '選択済';
+  name.textContent  = file.name;
+}
+
+function checkReady() {
+  const ready = files.upplan && files.upsikyu && files.uphosoku;
+  const btn   = document.getElementById('generateBtn');
+  btn.disabled = !ready;
+  document.getElementById('btnText').textContent =
+    ready ? '📄　PDF を生成する' : '3つのファイルが揃うとPDF生成できます';
+}
+
+function addFiles(fileList) {
+  const unknown = [];
+  for (const f of fileList) {
+    const type = detectType(f.name);
+    if (type) setFile(type, f);
+    else unknown.push(f.name);
+  }
+  setStatus(unknown.length ? 'error' : '',
+    unknown.length ? `⚠　ファイル名から種類を判別できませんでした：${unknown.join('、')}` : '');
+  checkReady();
+}
+
+function resetFiles() {
+  ['upplan','upsikyu','uphosoku'].forEach(type => {
+    files[type] = null;
+    document.getElementById(`item-${type}`).className = 'file-item';
+    const b = document.getElementById(`badge-${type}`);
+    b.className = 'badge badge-wait'; b.textContent = '未選択';
+    document.getElementById(`name-${type}`).textContent = 'ファイル未選択';
+  });
+  setStatus('', '');
+  checkReady();
+  document.getElementById('fileInput').value = '';
+}
+
+function setStatus(type, msg) {
+  const bar = document.getElementById('statusBar');
+  bar.className = 'status-bar' + (type ? ' ' + type : '');
+  bar.textContent = msg;
+}
+
+// ─── ドラッグ&ドロップ ───
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', ()  => dz.classList.remove('dragover'));
+dz.addEventListener('drop',      e  => { e.preventDefault(); dz.classList.remove('dragover'); addFiles(e.dataTransfer.files); });
+document.getElementById('fileInput').addEventListener('change', e => addFiles(e.target.files));
+
+// ═══════════════════════════════════════════════════════════
+// メイン処理
+// ═══════════════════════════════════════════════════════════
+async function generate() {
+  const btn = document.getElementById('generateBtn');
+  btn.disabled = true;
+  document.getElementById('btnSpinner').style.display = '';
+  document.getElementById('btnText').textContent = 'PDF生成中…しばらくお待ちください';
+  setStatus('info', '⏳　CSVファイルを処理しています…');
+
+  try {
+    const [upplanRows, upsikyuRows, uphosokuRows] = await Promise.all([
+      parseRows(files.upplan),
+      parseRows(files.upsikyu),
+      parseRows(files.uphosoku),
+    ]);
+
+    const users                    = readUphosoku(uphosokuRows);
+    const records                  = readUpplan(upplanRows);
+    const { details, summaries, totals } = readUpsikyu(upsikyuRows);
+
+    // own_pid: UPPLANのis_own=1のprovider_id、またはファイル名から取得
+    let ownPid = '';
+    for (const r of records) { if (r.is_own) { ownPid = r.provider_id; break; } }
+    if (!ownPid) {
+      const parts = files.upplan.name.split('_');
+      if (parts.length >= 5 && /^\d{10}$/.test(parts[4])) ownPid = parts[4];
+    }
+
+    // 対象月: ファイル名またはUPHOSOKUから取得
+    let targetMonth = '';
+    const fnParts = files.upplan.name.split('_');
+    if (fnParts.length >= 2 && /^\d{6}$/.test(fnParts[1])) targetMonth = fnParts[1];
+    if (!targetMonth) {
+      for (const u of Object.values(users)) {
+        const tm = u.target_month || '';
+        if (/^\d{6}$/.test(tm)) { targetMonth = tm; break; }
+      }
+    }
+
+    if (!targetMonth) throw new Error('対象月を特定できませんでした。ファイルが正しいか確認してください。');
+    if (Object.keys(users).length === 0) throw new Error('利用者情報が見つかりませんでした。UPHOSOKUファイルを確認してください。');
+
+    const html = buildHtml(users, records, details, summaries, totals, ownPid, targetMonth);
+
+    // プレビュー表示
+    const content = document.getElementById('previewContent');
+    const wrap = document.createElement('div');
+    wrap.className = 'page-wrap';
+    wrap.innerHTML = html;
+    content.innerHTML = '';
+    content.appendChild(wrap);
+
+    const y = parseInt(targetMonth.slice(0,4)), m = parseInt(targetMonth.slice(4,6));
+    document.getElementById('previewTitle').textContent =
+      `令和${rwa(y)}年${m}月分　サービス利用票・提供票別表（${Object.keys(users).length}名）`;
+
+    // ページ幅に合わせてスケール
+    scalePreview();
+    window.addEventListener('resize', scalePreview);
+
+    document.body.classList.add('preview-mode');
+    document.getElementById('previewWrap').style.display = 'block';
+    setStatus('success', '✅　生成完了！');
+
+  } catch (e) {
+    setStatus('error', '❌　' + e.message);
+    btn.disabled = false;
+    document.getElementById('btnSpinner').style.display = 'none';
+    document.getElementById('btnText').textContent = '📄　PDF を生成する';
+    return;
+  }
+
+  btn.disabled = false;
+  document.getElementById('btnSpinner').style.display = 'none';
+  document.getElementById('btnText').textContent = '📄　PDF を再生成する';
+}
+
+function scalePreview() {
+  const wraps = document.querySelectorAll('.page-wrap');
+  if (!wraps.length) return;
+  const avail = Math.min(window.innerWidth - 32, 1200);
+  const scale = Math.min(1, avail / 1122);
+  wraps.forEach(w => {
+    w.style.transform = `scale(${scale})`;
+    w.style.marginBottom = `${(w.offsetHeight * scale - w.offsetHeight) + 12}px`;
+  });
+}
+
+function doPrint() {
+  window.print();
+}
+
+function backToUpload() {
+  document.body.classList.remove('preview-mode');
+  window.removeEventListener('resize', scalePreview);
+}
+</script>
+</body>
+</html>
