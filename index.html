@@ -644,7 +644,7 @@ function hdrHtml(user, createdAt) {
 </div>`;
 }
 
-function calHtml(user, records, ownPid, monthStr, y, m, createdAt, snames) {
+function calHtml(user, records, ownPid, monthStr, y, m, createdAt, snames, isActual) {
   const no  = user.insured_no;
   const dim = getDaysInMonth(y, m);
   const dwd = {};
@@ -730,7 +730,7 @@ function calHtml(user, records, ownPid, monthStr, y, m, createdAt, snames) {
       h.push('<td class="c">予</td>');
       for (let d = 1; d <= dim; d++) {
         const wd = dwd[d], bg = wd===6?' sunbg':(wd===5?' satbg':'');
-        h.push(`<td class="${bg}">${days.has(d) ? '1' : ''}</td>`);
+        h.push(`<td class="${bg}">${(!isActual && days.has(d)) ? '1' : ''}</td>`);
       }
       h.push(`<td class="td-r" rowspan="2">${tot ? fn(tot) : ''}</td>`);
       h.push(`<td class="c" rowspan="2">${days.size}</td></tr>`);
@@ -740,7 +740,7 @@ function calHtml(user, records, ownPid, monthStr, y, m, createdAt, snames) {
       h.push('<td class="c">実</td>');
       for (let d = 1; d <= dim; d++) {
         const wd = dwd[d], bg = wd===6?' sunbg':(wd===5?' satbg':'');
-        h.push(`<td class="${bg}"></td>`);
+        h.push(`<td class="${bg}">${(isActual && days.has(d)) ? '1' : ''}</td>`);
       }
       h.push('</tr>');
 
@@ -884,7 +884,7 @@ function bpHtml(user, details, summaries, totals, ownPid, monthStr, y, m, create
   return h.join('');
 }
 
-function buildHtml(users, records, details, summaries, totals, ownPid, targetMonth, hasBilling) {
+function buildHtml(users, records, details, summaries, totals, ownPid, targetMonth, hasBilling, isActual) {
   const y  = parseInt(targetMonth.slice(0, 4));
   const m  = parseInt(targetMonth.slice(4, 6));
   const rw = rwa(y);
@@ -903,7 +903,7 @@ function buildHtml(users, records, details, summaries, totals, ownPid, targetMon
 
   const parts = [];
   for (const [, user] of Object.entries(users).sort((a, b) => a[0] < b[0] ? -1 : 1)) {
-    parts.push(calHtml(user, records, ownPid, ms, y, m, created, snames));
+    parts.push(calHtml(user, records, ownPid, ms, y, m, created, snames, isActual));
     if (hasBilling) parts.push(bpHtml(user, details, summaries, totals, ownPid, ms, y, m, created, snames));
   }
   return parts.join('');
@@ -1012,6 +1012,7 @@ async function generate() {
     }
 
     const hasBilling = !!files.upsikyu;
+    const isActual   = files.upplan.name.toUpperCase().includes('UPJSK');
     const { details, summaries, totals } = hasBilling
       ? readUpsikyu(upsikyuRows)
       : { details: {}, summaries: {}, totals: {} };
@@ -1038,7 +1039,7 @@ async function generate() {
     if (!targetMonth) throw new Error('対象月を特定できませんでした。ファイル名またはUPHOSOKUファイルを確認してください。');
     if (Object.keys(users).length === 0) throw new Error('利用者情報が見つかりませんでした。CSVファイルの内容を確認してください。');
 
-    const html = buildHtml(users, records, details, summaries, totals, ownPid, targetMonth, hasBilling);
+    const html = buildHtml(users, records, details, summaries, totals, ownPid, targetMonth, hasBilling, isActual);
 
     // プレビュー表示（ページごとに独立した page-wrap に分割）
     const content = document.getElementById('previewContent');
