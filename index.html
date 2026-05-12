@@ -600,8 +600,7 @@ function hdrHtml(user, createdAt) {
     ? '<b><u>男</u></b>・女'
     : '男・<b><u>女</u></b>';
   const cmInfo = [user.cm_name, user.cm_tel ? `（${user.cm_tel}）` : ''].filter(Boolean).join('');
-  return `<div style="text-align:right;font-size:4.5pt;margin-bottom:0.2mm">居宅介護支援事業所→サービス事業所</div>
-<div class="hdr">
+  return `<div class="hdr">
   <div class="hdr-row">
     <div class="hc hl" style="width:11mm;white-space:normal;line-height:1.4">保険者<br>番号</div>
     <div class="hc" style="width:20mm">${user.insurer_no||''}</div>
