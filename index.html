@@ -1209,6 +1209,7 @@ async function doSave() {
 
 function backToUpload() {
   document.body.classList.remove('preview-mode');
+  document.getElementById('previewWrap').style.display = 'none';
   window.removeEventListener('resize', scalePreview);
 }
 </script>
