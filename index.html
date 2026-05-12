@@ -210,7 +210,9 @@ table.ft col.ft-usr { width: 55mm; }
     <div class="drop-zone" id="dropZone">
       <div class="drop-icon">📂</div>
       <div class="drop-main">ここにCSVファイルをドラッグ＆ドロップ</div>
-      <div class="drop-hint">または下のボタンから選択 &nbsp;|&nbsp; 3ファイル同時に選択できます<br>UPPLAN・UPSIKYU・UPHOSOKU の3種類が必要です</div>
+      <div class="drop-hint">または下のボタンから選択 &nbsp;|&nbsp; 複数ファイル同時選択可<br>
+        <b>サービス事業所：</b>UPPLAN＋UPSIKYU＋UPHOSOKU<br>
+        <b>居宅介護支援事業所：</b>UPJSK（必須）＋UPHOSOKU（任意）</div>
     </div>
     <input type="file" id="fileInput" multiple accept=".csv" style="display:none">
     <button class="btn btn-gray" onclick="document.getElementById('fileInput').click()">
@@ -221,7 +223,7 @@ table.ft col.ft-usr { width: 55mm; }
       <div class="file-item" id="item-upplan">
         <div class="file-icon">📋</div>
         <div class="file-info">
-          <div class="file-label">UPPLAN（サービス計画）</div>
+          <div class="file-label">UPPLAN / UPJSK（サービス計画・実績）<span style="color:#dc2626;font-size:10px;margin-left:4px">必須</span></div>
           <div class="file-name" id="name-upplan">ファイル未選択</div>
         </div>
         <span class="badge badge-wait" id="badge-upplan">未選択</span>
@@ -229,18 +231,18 @@ table.ft col.ft-usr { width: 55mm; }
       <div class="file-item" id="item-upsikyu">
         <div class="file-icon">💴</div>
         <div class="file-info">
-          <div class="file-label">UPSIKYU（単位数・請求）</div>
-          <div class="file-name" id="name-upsikyu">ファイル未選択</div>
+          <div class="file-label">UPSIKYU（単位数・請求）<span style="color:#64748b;font-size:10px;margin-left:4px">任意・別表生成用</span></div>
+          <div class="file-name" id="name-upsikyu">未選択（別表なしで生成）</div>
         </div>
-        <span class="badge badge-wait" id="badge-upsikyu">未選択</span>
+        <span class="badge badge-wait" id="badge-upsikyu">任意</span>
       </div>
       <div class="file-item" id="item-uphosoku">
         <div class="file-icon">👤</div>
         <div class="file-info">
-          <div class="file-label">UPHOSOKU（被保険者情報）</div>
-          <div class="file-name" id="name-uphosoku">ファイル未選択</div>
+          <div class="file-label">UPHOSOKU（被保険者情報）<span style="color:#64748b;font-size:10px;margin-left:4px">任意</span></div>
+          <div class="file-name" id="name-uphosoku">未選択（氏名等は空欄で生成）</div>
         </div>
-        <span class="badge badge-wait" id="badge-uphosoku">未選択</span>
+        <span class="badge badge-wait" id="badge-uphosoku">任意</span>
       </div>
     </div>
   </div>
@@ -478,6 +480,7 @@ function parseCSVLine(line) {
 function detectType(filename) {
   const u = filename.toUpperCase();
   if (u.includes('UPPLAN'))   return 'upplan';
+  if (u.includes('UPJSK'))    return 'upplan';  // ケアマネ側実績CSVはUPPLANと同一列構造
   if (u.includes('UPSIKYU'))  return 'upsikyu';
   if (u.includes('UPHOSOKU')) return 'uphosoku';
   return null;
@@ -881,7 +884,7 @@ function bpHtml(user, details, summaries, totals, ownPid, monthStr, y, m, create
   return h.join('');
 }
 
-function buildHtml(users, records, details, summaries, totals, ownPid, targetMonth) {
+function buildHtml(users, records, details, summaries, totals, ownPid, targetMonth, hasBilling) {
   const y  = parseInt(targetMonth.slice(0, 4));
   const m  = parseInt(targetMonth.slice(4, 6));
   const rw = rwa(y);
@@ -901,7 +904,7 @@ function buildHtml(users, records, details, summaries, totals, ownPid, targetMon
   const parts = [];
   for (const [, user] of Object.entries(users).sort((a, b) => a[0] < b[0] ? -1 : 1)) {
     parts.push(calHtml(user, records, ownPid, ms, y, m, created, snames));
-    parts.push(bpHtml(user, details, summaries, totals, ownPid, ms, y, m, created, snames));
+    if (hasBilling) parts.push(bpHtml(user, details, summaries, totals, ownPid, ms, y, m, created, snames));
   }
   return parts.join('');
 }
@@ -928,11 +931,11 @@ function setFile(type, file) {
 }
 
 function checkReady() {
-  const ready = files.upplan && files.upsikyu && files.uphosoku;
+  const ready = !!files.upplan;
   const btn   = document.getElementById('generateBtn');
   btn.disabled = !ready;
   document.getElementById('btnText').textContent =
-    ready ? '📄　PDF を生成する' : '3つのファイルが揃うとPDF生成できます';
+    ready ? '📄　PDF を生成する' : 'UPPLAN または UPJSK ファイルを選択してください';
 }
 
 function addFiles(fileList) {
@@ -984,17 +987,36 @@ async function generate() {
   setStatus('info', '⏳　CSVファイルを処理しています…');
 
   try {
-    const [upplanRows, upsikyuRows, uphosokuRows] = await Promise.all([
-      parseRows(files.upplan),
-      parseRows(files.upsikyu),
-      parseRows(files.uphosoku),
-    ]);
+    const upplanRows   = await parseRows(files.upplan);
+    const upsikyuRows  = files.upsikyu  ? await parseRows(files.upsikyu)  : [];
+    const uphosokuRows = files.uphosoku ? await parseRows(files.uphosoku) : [];
 
-    const users                    = readUphosoku(uphosokuRows);
-    const records                  = readUpplan(upplanRows);
-    const { details, summaries, totals } = readUpsikyu(upsikyuRows);
+    const records = readUpplan(upplanRows);
+    let users     = readUphosoku(uphosokuRows);
 
-    // own_pid: UPPLANのis_own=1のprovider_id、またはファイル名から取得
+    // UPHOSOKUがない場合はUPPLAN/UPJSKの被保険者番号から空のユーザー情報を生成
+    if (Object.keys(users).length === 0) {
+      for (const r of records) {
+        if (!users[r.insured_no]) {
+          users[r.insured_no] = {
+            insured_no: r.insured_no, insurer_no: '',
+            name_kana: '', name: '（氏名不明）',
+            gender: '', birth_date: '', address: '',
+            certified_start: '', certified_end: '',
+            care_level: '', benefit_limit: '',
+            cm_agency_name: '', cm_name: '', cm_tel: '',
+            target_month: '',
+          };
+        }
+      }
+    }
+
+    const hasBilling = !!files.upsikyu;
+    const { details, summaries, totals } = hasBilling
+      ? readUpsikyu(upsikyuRows)
+      : { details: {}, summaries: {}, totals: {} };
+
+    // own_pid: is_own=1のprovider_id、またはファイル名から取得
     let ownPid = '';
     for (const r of records) { if (r.is_own) { ownPid = r.provider_id; break; } }
     if (!ownPid) {
@@ -1013,10 +1035,10 @@ async function generate() {
       }
     }
 
-    if (!targetMonth) throw new Error('対象月を特定できませんでした。ファイルが正しいか確認してください。');
-    if (Object.keys(users).length === 0) throw new Error('利用者情報が見つかりませんでした。UPHOSOKUファイルを確認してください。');
+    if (!targetMonth) throw new Error('対象月を特定できませんでした。ファイル名またはUPHOSOKUファイルを確認してください。');
+    if (Object.keys(users).length === 0) throw new Error('利用者情報が見つかりませんでした。CSVファイルの内容を確認してください。');
 
-    const html = buildHtml(users, records, details, summaries, totals, ownPid, targetMonth);
+    const html = buildHtml(users, records, details, summaries, totals, ownPid, targetMonth, hasBilling);
 
     // プレビュー表示（ページごとに独立した page-wrap に分割）
     const content = document.getElementById('previewContent');
@@ -1031,8 +1053,9 @@ async function generate() {
     }
 
     const y = parseInt(targetMonth.slice(0,4)), m = parseInt(targetMonth.slice(4,6));
+    const docLabel = hasBilling ? 'サービス利用票・提供票別表' : 'サービス利用票';
     document.getElementById('previewTitle').textContent =
-      `令和${rwa(y)}年${m}月分　サービス利用票・提供票別表（${Object.keys(users).length}名）`;
+      `令和${rwa(y)}年${m}月分　${docLabel}（${Object.keys(users).length}名）`;
 
     // ページ幅に合わせてスケール
     scalePreview();
