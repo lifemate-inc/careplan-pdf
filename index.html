@@ -246,25 +246,15 @@ table.ft col.ft-usr { width: 55mm; }
   </div>
 
   <div class="card">
-    <div class="card-title">Step 2 &nbsp;保存設定</div>
-    <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:4px">PDFファイル名（プレフィックス）</label>
-    <input type="text" id="filenamePrefix" placeholder="例：サービス利用票_202605"
-      style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;transition:border .15s"
-      onfocus="this.style.borderColor='#2563eb'" onblur="this.style.borderColor='#d1d5db'"
-      oninput="localStorage.setItem('careplan_prefix',this.value)">
-    <div style="font-size:11px;color:#94a3b8;margin-top:5px;line-height:1.5">
-      「PDFとして保存」時にブラウザが提案するファイル名になります。<br>
-      空欄の場合はページタイトル（月・利用者数）が使われます。
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">Step 3 &nbsp;PDF生成</div>
+    <div class="card-title">Step 2 &nbsp;PDF生成</div>
     <button class="btn btn-blue" id="generateBtn" onclick="generate()" disabled>
       <span id="btnSpinner" style="display:none">⏳</span>
       <span id="btnText">3つのファイルが揃うとPDF生成できます</span>
     </button>
     <button class="btn btn-gray" onclick="resetFiles()">リセット</button>
+    <button class="btn btn-gray" onclick="openSettings()" style="margin-top:4px;color:#475569">
+      ⚙️　PDF保存設定（保存先・ファイル名）
+    </button>
   </div>
 
   <div class="status-bar" id="statusBar"></div>
@@ -274,11 +264,45 @@ table.ft col.ft-usr { width: 55mm; }
 <div id="previewWrap">
   <div class="preview-bar">
     <div class="pbar-title" id="previewTitle">プレビュー</div>
+    <span id="saveProgress" style="font-size:12px;color:#e2e8f0;display:none;flex-shrink:0"></span>
+    <button class="pbtn" style="background:#475569;color:white" onclick="openSettings()">⚙️　設定</button>
     <button class="pbtn pbtn-save"  onclick="doSave()">💾　PDFとして保存</button>
     <button class="pbtn pbtn-print" onclick="doPrint()">🖨　印刷する</button>
     <button class="pbtn pbtn-back"  onclick="backToUpload()">← 戻る</button>
   </div>
   <div id="previewContent"></div>
+</div>
+
+<!-- ── 設定モーダル ── -->
+<div id="settingsModal" style="display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.55);align-items:center;justify-content:center">
+  <div style="background:white;border-radius:16px;padding:28px;width:460px;max-width:92vw;box-shadow:0 8px 40px rgba(0,0,0,.3)">
+    <div style="font-size:16px;font-weight:700;margin-bottom:20px;color:#1e3a5f">⚙️ PDF保存設定</div>
+
+    <div style="margin-bottom:18px">
+      <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">ファイル名（プレフィックス）</label>
+      <input type="text" id="settingsPrefix" placeholder="例：サービス利用票_202605"
+        style="width:100%;padding:8px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;outline:none"
+        onfocus="this.style.borderColor='#2563eb'" onblur="this.style.borderColor='#d1d5db'">
+      <div style="font-size:11px;color:#94a3b8;margin-top:4px">PDFファイル名の先頭に使われます。空欄の場合は月・利用者数が使われます。</div>
+    </div>
+
+    <div style="margin-bottom:24px">
+      <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px">保存先フォルダ</label>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+        <div id="saveDirDisplay" style="flex:1;font-size:12px;color:#475569;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:7px 12px;min-height:32px;word-break:break-all">未設定（保存のたびに場所を選択）</div>
+        <button onclick="pickSaveDir()" style="padding:7px 14px;border:none;border-radius:8px;background:#2563eb;color:white;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0">📁 選択</button>
+      </div>
+      <div style="font-size:11px;color:#94a3b8;line-height:1.5">
+        フォルダを設定すると次回から自動でそこに保存されます（選択ダイアログが出なくなります）。<br>
+        デスクトップを選ぶ場合はデスクトップフォルダを選択してください。
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px">
+      <button onclick="applySettings()" style="flex:1;padding:11px;border:none;border-radius:8px;background:#2563eb;color:white;font-size:14px;font-weight:700;cursor:pointer">保存して閉じる</button>
+      <button onclick="closeSettings()" style="padding:11px 18px;border:1.5px solid #d1d5db;border-radius:8px;background:white;color:#475569;font-size:14px;cursor:pointer">閉じる</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -943,10 +967,6 @@ function setStatus(type, msg) {
   bar.textContent = msg;
 }
 
-// ─── ファイル名プレフィックスを復元 ───
-const savedPrefix = localStorage.getItem('careplan_prefix');
-if (savedPrefix) document.getElementById('filenamePrefix').value = savedPrefix;
-
 // ─── ドラッグ&ドロップ ───
 const dz = document.getElementById('dropZone');
 dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('dragover'); });
@@ -1051,13 +1071,140 @@ function doPrint() {
   window.print();
 }
 
-function doSave() {
-  const prefix = (document.getElementById('filenamePrefix') || {}).value || '';
-  const title  = document.getElementById('previewTitle').textContent;
-  const origDocTitle = document.title;
-  document.title = prefix.trim() || title;
-  window.print();
-  setTimeout(() => { document.title = origDocTitle; }, 2000);
+// ─── IndexedDB（フォルダハンドル保存） ───
+function openCareplanDB() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('careplanDB', 1);
+    r.onupgradeneeded = e => e.target.result.createObjectStore('handles');
+    r.onsuccess = e => res(e.target.result);
+    r.onerror   = e => rej(e.target.error);
+  });
+}
+async function storeHandle(key, h) {
+  const db = await openCareplanDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('handles', 'readwrite');
+    tx.objectStore('handles').put(h, key);
+    tx.oncomplete = res; tx.onerror = e => rej(e.target.error);
+  });
+}
+async function loadHandle(key) {
+  const db = await openCareplanDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('handles', 'readonly');
+    const r  = tx.objectStore('handles').get(key);
+    r.onsuccess = e => res(e.target.result);
+    r.onerror   = e => rej(e.target.error);
+  });
+}
+
+// ─── 設定モーダル ───
+function openSettings() {
+  const m = document.getElementById('settingsModal');
+  m.style.display = 'flex';
+  document.getElementById('settingsPrefix').value = localStorage.getItem('careplan_prefix') || '';
+  const dn = localStorage.getItem('careplan_save_dir_name');
+  document.getElementById('saveDirDisplay').textContent = dn ? '📁 ' + dn : '未設定（保存のたびに場所を選択）';
+}
+function closeSettings() {
+  document.getElementById('settingsModal').style.display = 'none';
+}
+function applySettings() {
+  localStorage.setItem('careplan_prefix', document.getElementById('settingsPrefix').value);
+  closeSettings();
+}
+async function pickSaveDir() {
+  if (!('showDirectoryPicker' in window)) {
+    alert('このブラウザはフォルダの固定保存に対応していません。Chrome / Edge をお使いください。');
+    return;
+  }
+  try {
+    const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    await storeHandle('saveDir', handle);
+    localStorage.setItem('careplan_save_dir_name', handle.name);
+    document.getElementById('saveDirDisplay').textContent = '📁 ' + handle.name;
+  } catch(e) {
+    if (e.name !== 'AbortError') alert('フォルダ選択エラー: ' + e.message);
+  }
+}
+
+// ─── PDF保存 ───
+function setSaveProgress(msg, color) {
+  const el = document.getElementById('saveProgress');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color  = color || '#e2e8f0';
+  el.style.display = msg ? '' : 'none';
+}
+
+async function doSave() {
+  if (!window.html2canvas || !window.jspdf) {
+    alert('PDF生成ライブラリを読み込み中です。数秒後にもう一度お試しください。');
+    return;
+  }
+  const prefix   = localStorage.getItem('careplan_prefix') || '';
+  const title    = document.getElementById('previewTitle').textContent;
+  const filename = (prefix.trim() || title) + '.pdf';
+
+  setSaveProgress('⏳ PDF生成中…');
+
+  try {
+    const { jsPDF } = window.jspdf;
+    const pdf   = new jsPDF({ orientation: 'l', unit: 'mm', format: 'a4' });
+    const pages = [...document.querySelectorAll('#previewContent .page')];
+
+    for (let i = 0; i < pages.length; i++) {
+      setSaveProgress(`⏳ PDF生成中… (${i + 1} / ${pages.length}ページ)`);
+      const canvas = await html2canvas(pages[i], {
+        scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff',
+      });
+      if (i > 0) pdf.addPage([297, 210], 'l');
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 297, 210);
+    }
+
+    const blob = pdf.output('blob');
+
+    // 保存先フォルダが設定済みなら直接書き込み
+    let saved = false;
+    try {
+      const dirH = await loadHandle('saveDir');
+      if (dirH) {
+        const perm = await dirH.requestPermission({ mode: 'readwrite' });
+        if (perm === 'granted') {
+          const fh = await dirH.getFileHandle(filename, { create: true });
+          const wr = await fh.createWritable();
+          await wr.write(blob); await wr.close();
+          saved = true;
+        }
+      }
+    } catch (_) {}
+
+    if (!saved) {
+      // 未設定 or 権限なし → ネイティブ保存ダイアログ
+      if ('showSaveFilePicker' in window) {
+        setSaveProgress('💾 保存先を選択してください…');
+        const fh = await window.showSaveFilePicker({
+          suggestedName: filename,
+          types: [{ description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }],
+        });
+        const wr = await fh.createWritable();
+        await wr.write(blob); await wr.close();
+      } else {
+        // フォールバック：ブラウザのダウンロード
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename; a.click();
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    setSaveProgress('✅ 保存完了: ' + filename, '#86efac');
+    setTimeout(() => setSaveProgress(''), 4000);
+
+  } catch(e) {
+    if (e.name !== 'AbortError') setSaveProgress('❌ ' + e.message, '#fca5a5');
+    else setSaveProgress('');
+  }
 }
 
 function backToUpload() {
@@ -1065,5 +1212,7 @@ function backToUpload() {
   window.removeEventListener('resize', scalePreview);
 }
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </body>
 </html>
